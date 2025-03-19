@@ -1,0 +1,9 @@
+<?php
+
+return [
+    'host' => 'localhost',
+    'dbname' => 'stock_management',
+    'username' => 'your_username',
+    'password' => 'your_password',
+    'charset' => 'utf8mb4'
+]; 

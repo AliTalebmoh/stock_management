@@ -1,0 +1,7 @@
+/vendor/
+.env
+composer.lock
+public/bon_de_sortie_*.xlsx
+.idea/
+.vscode/
+*.log 
