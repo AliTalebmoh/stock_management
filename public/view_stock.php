@@ -7,6 +7,33 @@ $db = Connection::getInstance();
 // Handle article operations
 $success = $error = '';
 
+// Handle stock request
+if (isset($_POST['request_article'])) {
+    try {
+        // First check if there's enough stock
+        $stmt = $db->prepare("SELECT current_stock FROM products WHERE id = ?");
+        $stmt->execute([$_POST['product_id']]);
+        $currentStock = $stmt->fetchColumn();
+
+        if ($currentStock >= $_POST['quantity']) {
+            // Create the request
+            $stmt = $db->prepare("INSERT INTO stock_requests (requester_id, product_id, quantity, notes) VALUES (?, ?, ?, ?)");
+            $stmt->execute([
+                $_POST['requester_id'],
+                $_POST['product_id'],
+                $_POST['quantity'],
+                $_POST['notes']
+            ]);
+
+            $success = "Demande créée avec succès";
+        } else {
+            $error = "Stock insuffisant pour cette demande";
+        }
+    } catch (PDOException $e) {
+        $error = "Erreur lors de la création de la demande: " . $e->getMessage();
+    }
+}
+
 // Delete article
 if (isset($_POST['delete_article']) && isset($_POST['article_id'])) {
     try {
@@ -49,35 +76,21 @@ if (isset($_POST['update_article'])) {
     }
 }
 
-// Get all unique categories and their subcategories
+// Get all unique categories
 $categoriesQuery = $db->query("
-    SELECT DISTINCT 
-        category,
-        subcategory
+    SELECT DISTINCT category_type as category
     FROM products 
-    WHERE category IS NOT NULL 
-        AND category != '' 
-        AND category NOT IN ('Désignation')
-    ORDER BY category, subcategory
+    WHERE category_type != 'Non classé'
+    ORDER BY category_type
 ");
 
-$categories = [];
-$subcategories = [];
-while ($row = $categoriesQuery->fetch(PDO::FETCH_ASSOC)) {
-    if (!in_array($row['category'], $categories)) {
-        $categories[] = $row['category'];
-    }
-    if (!isset($subcategories[$row['category']])) {
-        $subcategories[$row['category']] = [];
-    }
-    if ($row['subcategory']) {
-        $subcategories[$row['category']][] = $row['subcategory'];
-    }
-}
+$categories = $categoriesQuery->fetchAll(PDO::FETCH_COLUMN);
 
-// Get selected filters
+// Get selected category from filter
 $selectedCategory = isset($_GET['category']) ? $_GET['category'] : 'all';
-$selectedSubcategory = isset($_GET['subcategory']) ? $_GET['subcategory'] : 'all';
+
+// Get selected category from filter
+$selectedCategory = isset($_GET['category']) ? $_GET['category'] : 'all';
 
 // Fetch products with optional section filter
 $query = "
@@ -90,25 +103,19 @@ $query = "
         sortie,
         current_stock,
         created_at,
-        updated_at
+        updated_at,
+        category_type
     FROM products";
 
 if ($selectedCategory !== 'all' && $selectedCategory) {
-    $query .= " WHERE category = :category";
-    if ($selectedSubcategory !== 'all' && $selectedSubcategory) {
-        $query .= " AND subcategory = :subcategory";
-    }
+    $query .= " WHERE category_type = :category";
 }
 
 $query .= " ORDER BY description, designation";
 
 $stmt = $db->prepare($query);
 if ($selectedCategory !== 'all' && $selectedCategory) {
-    $params = ['category' => $selectedCategory];
-    if ($selectedSubcategory !== 'all' && $selectedSubcategory) {
-        $params['subcategory'] = $selectedSubcategory;
-    }
-    $stmt->execute($params);
+    $stmt->execute(['category' => $selectedCategory]);
 } else {
     $stmt->execute();
 }
@@ -118,7 +125,7 @@ $products = $stmt->fetchAll();
 // Group products by section
 $groupedProducts = [];
 foreach ($products as $product) {
-    $category = $product['category'] ?: 'Non catégorisé';
+    $category = $product['category_type'] ?: 'Non catégorisé';
     if (!isset($groupedProducts[$category])) {
         $groupedProducts[$category] = [];
     }
@@ -191,6 +198,9 @@ foreach ($products as $product) {
                     <li class="nav-item">
                         <a class="nav-link" href="analytics.php"><i class="fas fa-chart-line"></i> Analytiques</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="add_requester.php"><i class="fas fa-user-plus"></i> Ajouter un demandeur</a>
+                    </li>
                 </ul>
             </div>
         </div>
@@ -221,12 +231,13 @@ foreach ($products as $product) {
         <div class="card">
             <div class="card-body">
                 <!-- Section Filter -->
-                <div class="row mb-4">
-                    <div class="col-md-4">
-                        <form id="sectionFilter" class="d-flex">
-                            <div class="row">
-                                <div class="col-md-5">
-                                    <select name="category" id="categorySelect" class="form-select">
+                <div class="card mb-3 border-0 bg-light">
+                    <div class="card-body p-3">
+                        <form id="sectionFilter">
+                            <div class="row g-3">
+                                <div class="col-md-3 pe-2">
+                                    <label for="categorySelect" class="form-label mb-1">Catégorie</label>
+                                    <select name="category" id="categorySelect" class="form-select shadow-sm">
                                         <option value="all">Toutes les catégories</option>
                                         <?php foreach ($categories as $category): ?>
                                             <option value="<?= htmlspecialchars($category) ?>" <?= $selectedCategory === $category ? 'selected' : '' ?>>
@@ -235,25 +246,22 @@ foreach ($products as $product) {
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
-                                <div class="col-md-5">
-                                    <select name="subcategory" id="subcategorySelect" class="form-select" <?= $selectedCategory === 'all' ? 'disabled' : '' ?>>
-                                        <option value="all">Toutes les sous-catégories</option>
-                                        <?php if ($selectedCategory !== 'all' && isset($subcategories[$selectedCategory])): ?>
-                                            <?php foreach ($subcategories[$selectedCategory] as $subcategory): ?>
-                                                <?php if (!empty($subcategory)): ?>
-                                                    <option value="<?= htmlspecialchars($subcategory) ?>" <?= $selectedSubcategory === $subcategory ? 'selected' : '' ?>>
-                                                        <?= htmlspecialchars($subcategory) ?>
-                                                    </option>
-                                                <?php endif; ?>
-                                            <?php endforeach; ?>
-                                        <?php endif; ?>
-                                    </select>
+                                <div class="col-md-2 px-2">
+                                    <label class="form-label mb-1">&nbsp;</label>
+                                    <button type="submit" class="btn btn-primary w-100 shadow-sm">
+                                        <i class="fas fa-filter me-1"></i>Filtrer
+                                    </button>
                                 </div>
-                                <div class="col-md-2">
-                                    <button type="submit" class="btn btn-primary w-100">Filtrer</button>
+                                <div class="col-md-7 ps-2">
+                                    <label for="searchInput" class="form-label mb-1">Rechercher</label>
+                                    <div class="input-group shadow-sm">
+                                        <input type="text" class="form-control" id="searchInput" placeholder="Rechercher un article...">
+                                        <button class="btn btn-outline-secondary" type="button">
+                                            <i class="fas fa-search"></i>
+                                        </button>
+                                    </div>
                                 </div>
-                            </select>
-                            <button type="submit" class="btn btn-primary">Filtrer</button>
+                            </div>
                         </form>
                     </div>
                 </div>
@@ -262,58 +270,108 @@ foreach ($products as $product) {
                     <thead>
                         <tr>
                             <th>Désignation</th>
-                            <th>Description</th>
-                            <th>Stock Année Précédente</th>
-                            <th>Total Entrées</th>
-                            <th>Total Sorties</th>
-                            <th>Stock Actuel</th>
-                            <th>Dernière Mise à Jour</th>
-                            <th>Actions</th>
+                            <th class="text-center">Report</th>
+                            <th class="text-center">Entrées</th>
+                            <th class="text-center">Sorties</th>
+                            <th class="text-center">Stock</th>
+                            <th class="text-center">Dernier Mise à Jour</th>
+                            <th class="text-center" style="width: 100px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($groupedProducts as $section => $sectionProducts): ?>
                             <!-- Section Header -->
                             <tr class="table-primary">
-                                <th colspan="8" class="section-header">
+                                <th colspan="7" class="section-header">
                                     <i class="fas fa-folder-open me-2"></i><?= htmlspecialchars($section) ?>
                                     <span class="badge bg-secondary ms-2"><?= count($sectionProducts) ?> articles</span>
                                 </th>
                             </tr>
                             <?php foreach ($sectionProducts as $product): ?>
                             <tr>
-                                <td><?= htmlspecialchars($product['designation']) ?></td>
-                                <td><?= htmlspecialchars($product['description']) ?></td>
-                                <td><?= $product['report_stock'] ?></td>
-                                <td><?= $product['entre'] ?></td>
-                                <td><?= $product['sortie'] ?></td>
-                                <td>
-                                    <span class="badge bg-<?= $product['current_stock'] > 0 ? 'success' : 'danger' ?>">
+                                <td class="align-middle"><?= htmlspecialchars($product['designation']) ?></td>
+                                <td class="text-center align-middle"><?= $product['report_stock'] ?></td>
+                                <td class="text-center align-middle"><?= $product['entre'] ?></td>
+                                <td class="text-center align-middle"><?= $product['sortie'] ?></td>
+                                <td class="text-center align-middle">
+                                    <span class="badge bg-<?= $product['current_stock'] > 0 ? 'success' : 'danger' ?> px-3 py-2">
                                         <?= $product['current_stock'] ?>
                                     </span>
                                 </td>
-                                <td><?= date('Y-m-d H:i', strtotime($product['updated_at'])) ?></td>
-                                <td class="action-buttons">
-                                    <button type="button" class="btn btn-sm btn-primary edit-article" 
-                                            data-id="<?= $product['id'] ?>"
-                                            data-designation="<?= htmlspecialchars($product['designation']) ?>"
-                                            data-description="<?= htmlspecialchars($product['description']) ?>"
-                                            data-report-stock="<?= $product['report_stock'] ?>">
-                                        <i class="fas fa-edit"></i>
-                                    </button>
-                                    <form method="POST" class="d-inline delete-form">
-                                        <input type="hidden" name="article_id" value="<?= $product['id'] ?>">
-                                        <button type="submit" name="delete_article" class="btn btn-sm btn-danger" 
-                                                onclick="return confirm('Êtes-vous sûr de vouloir supprimer cet article ?')">
+                                <td class="text-center align-middle"><?= date('d/m/Y H:i', strtotime($product['updated_at'])) ?></td>
+                                <td class="text-center align-middle">
+                                    <div class="btn-group">
+                                        <button type="button" class="btn btn-sm btn-outline-primary edit-article" 
+                                                data-id="<?= $product['id'] ?>"
+                                                data-designation="<?= htmlspecialchars($product['designation']) ?>"
+                                                data-report-stock="<?= $product['report_stock'] ?>"
+                                                data-bs-toggle="modal" data-bs-target="#editArticleModal"
+                                                title="Modifier">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger delete-article"
+                                                data-id="<?= $product['id'] ?>"
+                                                data-designation="<?= htmlspecialchars($product['designation']) ?>"
+                                                data-bs-toggle="modal" data-bs-target="#deleteArticleModal"
+                                                title="Supprimer">
                                             <i class="fas fa-trash"></i>
                                         </button>
-                                    </form>
+                                    </div>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Request Article Modal -->
+    <div class="modal fade" id="requestArticleModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Demander un article</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form action="" method="POST">
+                    <input type="hidden" name="product_id" id="request_product_id">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Article</label>
+                            <input type="text" class="form-control" id="request_designation" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Stock disponible</label>
+                            <input type="text" class="form-control" id="request_current_stock" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label for="requester_id" class="form-label">Demandeur</label>
+                            <select class="form-select" id="requester_id" name="requester_id" required>
+                                <option value="">Sélectionner un demandeur</option>
+                                <?php
+                                $requesters = $db->query("SELECT id, name, department FROM requesters ORDER BY name")->fetchAll();
+                                foreach ($requesters as $requester) {
+                                    echo "<option value=\"{$requester['id']}\">{$requester['name']} ({$requester['department']})</option>";
+                                }
+                                ?>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="quantity" class="form-label">Quantité</label>
+                            <input type="number" class="form-control" id="quantity" name="quantity" required min="1">
+                        </div>
+                        <div class="mb-3">
+                            <label for="notes" class="form-label">Notes</label>
+                            <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                        <button type="submit" name="request_article" class="btn btn-success">Demander</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -391,32 +449,10 @@ foreach ($products as $product) {
         $(document).ready(function() {
             // Handle category change
             $('#categorySelect').change(function() {
-                var category = $(this).val();
-                var subcategorySelect = $('#subcategorySelect');
-                
-                // Clear and disable subcategory select if 'all' is selected
-                if (category === 'all') {
-                    subcategorySelect.html('<option value="all">Toutes les sous-catégories</option>');
-                    subcategorySelect.prop('disabled', true);
-                    $('#sectionFilter').submit(); // Auto-submit on category change
-                    return;
-                }
-                
-                // Enable subcategory select
-                subcategorySelect.prop('disabled', false);
-                
-                // Get subcategories for selected category via AJAX
-                $.get('get_subcategories.php', { category: category }, function(data) {
-                    var options = '<option value="all">Toutes les sous-catégories</option>';
-                    data.forEach(function(subcategory) {
-                        if (subcategory) { // Only add non-empty subcategories
-                            options += `<option value="${subcategory}">${subcategory}</option>`;
-                        }
-                    });
-                    subcategorySelect.html(options);
-                    $('#sectionFilter').submit(); // Auto-submit on category change
-                });
+                $('#sectionFilter').submit(); // Auto-submit on category change
             });
+
+            // Initialize DataTable with category grouping
 
             // Initialize DataTable
             $('#stockTable').DataTable({

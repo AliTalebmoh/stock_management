@@ -30,6 +30,20 @@ if (!$file) {
     die("Error: Could not open CSV file\n");
 }
 
+// Define category mappings
+$categoryMappings = [
+    'Fournitures de Bureau' => ['agrafe', 'trombone', 'ciseau', 'colle', 'post-it', 'scotch', 'dateur'],
+    'Papeterie' => ['cahier', 'bloc note', 'registre', 'enveloppe', 'chemise'],
+    'Matériel d\'Écriture' => ['stylo', 'crayon', 'marqueur', 'gomme', 'taille crayon'],
+    'Matériel de Dessin' => ['compas', 'règle', 'equerre', 'rapporteur', 'dessin'],
+    'Matériel Informatique' => ['ordinateur', 'clavier', 'souris', 'usb', 'câble', 'dell'],
+    'Consommables d\'Impression' => ['toner', 'cartouche', 'rame papier', 'cd', 'dvd'],
+    'Matériel Pédagogique' => ['ardoise', 'craie', 'tableau', 'brosse', 'flip chart'],
+    'Matériel de Rangement' => ['classeur', 'archive', 'boite', 'pochette'],
+    'Matériel Artistique' => ['peinture', 'pinceau', 'crepon', 'feutre', 'couleur'],
+    'Matériel de Présentation' => ['magnétique', 'porte', 'badge', 'drapeau']
+];
+
 // Skip empty lines and headers
 $row = 0;
 $currentCategory = '';
@@ -73,6 +87,26 @@ while (($data = fgetcsv($file)) !== false) {
     // Process article
     $designation = trim($data[0]);
     if (!empty($designation)) {
+        // Determine category based on item description
+        $itemDescription = strtolower($designation);
+        $assignedCategory = '';
+        
+        foreach ($categoryMappings as $category => $keywords) {
+            foreach ($keywords as $keyword) {
+                if (strpos($itemDescription, strtolower($keyword)) !== false) {
+                    $assignedCategory = $category;
+                    break 2;
+                }
+            }
+        }
+        
+        // If no category was found, use the current section category or default
+        if (empty($assignedCategory)) {
+            $assignedCategory = $currentCategory ?: 'Non classé';
+        }
+        
+        // Update the current category
+        $currentCategory = $assignedCategory;
         try {
             $stmt = $db->prepare("
                 INSERT INTO products 

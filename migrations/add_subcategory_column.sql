@@ -1,1 +1,0 @@
-ALTER TABLE products ADD COLUMN subcategory VARCHAR(255) DEFAULT NULL;

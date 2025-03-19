@@ -34,6 +34,7 @@ composer install
 ```bash
 mysql -u root -p < database/schema.sql
 php -S localhost:8000 -t public/
+php import_articles.php "Liste d'articles.csv"
 ```
 
 4. Configure your database connection:
