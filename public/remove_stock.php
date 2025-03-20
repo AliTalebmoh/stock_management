@@ -11,6 +11,11 @@ ini_set('display_errors', 1);
 
 $db = Connection::getInstance();
 
+// Add this line near the top of the file, after the database connection
+if (!file_exists(__DIR__ . '/exports')) {
+    mkdir(__DIR__ . '/exports', 0777, true);
+}
+
 // Fetch all products with current stock
 $products = $db->query("
     SELECT 
@@ -261,16 +266,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sheet->getRowDimension($footerRow)->setRowHeight(25);
             $sheet->getRowDimension($footerRow-4)->setRowHeight(25);
 
-            // Send Excel file directly to browser
-            $db->commit();
-            $filename = 'bon_de_sortie_' . $bonNumber . '.xlsx';
-            
-            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            header('Content-Disposition: attachment;filename="' . $filename . '"');
-            header('Cache-Control: max-age=0');
-            
+            // Generate a unique filename using the bon number
+            $filename = 'bon_sortie_' . str_replace('/', '_', $bonNumber) . '.xlsx';
+            $filepath = __DIR__ . '/exports/' . $filename;
+
+            // Save the Excel file
             $writer = new Xlsx($spreadsheet);
-            $writer->save('php://output');
+            $writer->save($filepath);
+            $db->commit();
+
+            // Store success message and filename in session
+            session_start();
+            $_SESSION['excel_generated'] = true;
+            $_SESSION['bon_number'] = $bonNumber;
+            $_SESSION['excel_file'] = $filename; // Store filename for download
+
+            // Redirect to same page to show success message
+            header('Location: ' . $_SERVER['PHP_SELF']);
             exit;
         } else {
             throw new Exception(implode("<br>", $errors));
@@ -289,6 +301,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Sortie de Stock - Gestion des Stocks</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
     <style>
         .navbar-brand img {
             height: 60px;
@@ -360,14 +374,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         #add-product:hover {
             transform: translateY(-1px);
         }
+        .input-group {
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            min-height: 42px;
+            position: relative;
+            flex-wrap: nowrap;
+        }
+        
         .input-group-text {
             background-color: #f8f9fa;
-            border-color: #ced4da;
+            border: 1px solid #dee2e6;
+            border-right: none;
+            padding: 0.6rem 1rem;
+            display: flex;
+            align-items: center;
+            min-height: 42px;
+            position: relative;
+            z-index: 3;
+            width: 42px;
+            justify-content: center;
         }
-        .form-control:focus,
-        .form-select:focus {
-            border-color: #80bdff;
-            box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+        
+        /* Select2 specific styles */
+        .select2-container--bootstrap-5 {
+            flex: 1 1 auto !important;
+            width: 1% !important;
+        }
+
+        .select2-container--bootstrap-5 .select2-selection {
+            border: 1px solid #dee2e6;
+            border-left: none;
+            min-height: 42px !important;
+            height: 42px !important;
+            display: flex;
+            align-items: center;
+            padding: 0 0.5rem;
+        }
+
+        .form-select {
+            flex: 1 1 auto;
+            width: 1%;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+            padding: 1rem 1.25rem;
+        }
+
+        .btn-primary {
+            background-color: #006837;
+            border-color: #006837;
+            padding: 0.75rem 2rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            background-color: #005a2f;
+            border-color: #005a2f;
+            transform: translateY(-1px);
         }
     </style>
 </head>
@@ -414,10 +480,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </nav>
         </div>
         
-        <?php if (isset($success)): ?>
-            <div class="alert alert-success">
-                <i class="fas fa-check-circle me-2"></i><?= $success ?>
+        <?php if (isset($_SESSION['excel_generated']) && $_SESSION['excel_generated']): ?>
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="fas fa-check-circle me-2"></i>
+                <strong>Succès!</strong> Le bon de sortie n°<?= htmlspecialchars($_SESSION['bon_number']) ?> a été généré avec succès.
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
+            <div class="text-center mb-4">
+                <a href="exports/<?= htmlspecialchars($_SESSION['excel_file']) ?>" class="btn btn-success me-2" download>
+                    <i class="fas fa-download me-2"></i>Télécharger le bon de sortie
+                </a>
+                <a href="index.php" class="btn btn-primary">
+                    <i class="fas fa-home me-2"></i>Retour à l'accueil
+                </a>
+            </div>
+            <?php 
+            // Clear the session variables
+            unset($_SESSION['excel_generated']);
+            unset($_SESSION['bon_number']);
+            unset($_SESSION['excel_file']);
+            ?>
         <?php endif; ?>
 
         <?php if (isset($error)): ?>
@@ -518,6 +600,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         $(document).ready(function() {
             const productsContainer = $('#products-container');
@@ -646,6 +729,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         firstError.focus();
                     }
                 }
+            });
+
+            // Initialize Select2 for demander selection
+            $('#demander_id').select2({
+                theme: 'bootstrap-5',
+                placeholder: 'Rechercher un demandeur...',
+                allowClear: true,
+                width: '100%',
+                language: {
+                    noResults: function() {
+                        return "Aucun demandeur trouvé";
+                    },
+                    searching: function() {
+                        return "Recherche...";
+                    }
+                }
+            });
+
+            // Initialize Select2 for product selection
+            function initializeSelect2() {
+                $('.product-select').select2({
+                    theme: 'bootstrap-5',
+                    placeholder: 'Rechercher un article...',
+                    allowClear: true,
+                    width: '100%',
+                    language: {
+                        noResults: function() {
+                            return "Aucun article trouvé";
+                        },
+                        searching: function() {
+                            return "Recherche...";
+                        }
+                    }
+                });
+            }
+
+            // Initialize Select2 for existing product selects
+            initializeSelect2();
+
+            // When adding a new product entry
+            $('#add-product').on('click', function() {
+                const newEntry = $('.product-entry:first').clone();
+                
+                // Clear values
+                newEntry.find('select, input').val('');
+                newEntry.find('.remove-product').removeClass('d-none');
+                
+                // Destroy existing Select2 before cloning
+                newEntry.find('.product-select').select2('destroy');
+                
+                // Append the new entry
+                $('#products-container').append(newEntry);
+                
+                // Initialize Select2 for the new select
+                initializeSelect2();
+                
+                // Update remove buttons visibility
+                updateRemoveButtons();
+            });
+
+            // Handle Select2 cleanup when removing a product entry
+            $(document).on('click', '.remove-product', function() {
+                const entry = $(this).closest('.product-entry');
+                entry.find('.product-select').select2('destroy'); // Destroy Select2 before removal
+                entry.remove();
+                updateRemoveButtons();
             });
         });
     </script>

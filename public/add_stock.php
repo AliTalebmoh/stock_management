@@ -33,6 +33,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Entrée de Stock - Gestion des Stocks</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
     <style>
         .navbar-brand img {
             height: 60px;
@@ -77,6 +79,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .alert {
             border-radius: 8px;
             font-weight: 500;
+        }
+        .input-group {
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            min-height: 42px;
+            position: relative;
+            flex-wrap: nowrap;
+        }
+        
+        .input-group-text {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-right: none;
+            padding: 0.6rem 1rem;
+            display: flex;
+            align-items: center;
+            min-height: 42px;
+            position: relative;
+            z-index: 3;
+            width: 42px;
+            justify-content: center;
+        }
+        
+        .form-select, .form-control {
+            border: 1px solid #dee2e6;
+            border-left: none;
+            padding: 0.6rem 1rem;
+            min-height: 42px;
+        }
+
+        /* Update Select2 specific styles */
+        .select2-container--bootstrap-5 {
+            flex: 1 1 auto !important;
+            width: 1% !important;
+        }
+
+        .select2-container--bootstrap-5 .select2-selection {
+            border: 1px solid #dee2e6;
+            border-left: none;
+            min-height: 42px !important;
+            height: 42px !important;
+            display: flex;
+            align-items: center;
+            padding: 0 0.5rem;
+        }
+
+        /* Ensure the select element itself doesn't affect layout */
+        .form-select {
+            flex: 1 1 auto;
+            width: 1%;
+        }
+
+        /* Fix input group border radius */
+        .input-group > :first-child {
+            border-top-left-radius: 0.375rem;
+            border-bottom-left-radius: 0.375rem;
+        }
+        
+        .input-group > :last-child {
+            border-top-right-radius: 0.375rem;
+            border-bottom-right-radius: 0.375rem;
+        }
+
+        /* Ensure consistent height for number input */
+        input[type="number"].form-control {
+            height: 42px;
+            line-height: 1.5;
+        }
+
+        /* Select2 specific styles */
+        .select2-container--bootstrap-5 .select2-selection {
+            border: 1px solid #dee2e6;
+            border-left: none;
+            min-height: 42px !important;
+            padding: 0.6rem 1rem;
+        }
+
+        .select2-container--bootstrap-5 .select2-selection--single {
+            padding-top: 0;
+            padding-bottom: 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+            padding: 0;
+            line-height: normal;
+        }
+
+        .select2-container--bootstrap-5 .select2-dropdown {
+            border-color: #dee2e6;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.05);
+        }
+
+        .select2-container--bootstrap-5 .select2-search__field {
+            padding: 0.5rem;
+            border-radius: 4px;
         }
     </style>
 </head>
@@ -203,5 +301,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            // Initialize Select2 for product selection
+            $('#product_id').select2({
+                theme: 'bootstrap-5',
+                placeholder: 'Rechercher un article...',
+                allowClear: true,
+                width: '100%',
+                language: {
+                    noResults: function() {
+                        return "Aucun article trouvé";
+                    },
+                    searching: function() {
+                        return "Recherche...";
+                    }
+                }
+            });
+
+            // Initialize Select2 for supplier selection
+            $('#supplier_id').select2({
+                theme: 'bootstrap-5',
+                placeholder: 'Sélectionner un fournisseur',
+                allowClear: true,
+                width: '100%',
+                language: {
+                    noResults: function() {
+                        return "Aucun fournisseur trouvé";
+                    },
+                    searching: function() {
+                        return "Recherche...";
+                    }
+                }
+            });
+        });
+    </script>
 </body>
 </html>

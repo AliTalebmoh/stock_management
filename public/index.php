@@ -82,6 +82,17 @@ require_once __DIR__ . '/../vendor/autoload.php';
             <div class="col-md-6 col-lg-3">
                 <div class="card h-100 text-center">
                     <div class="card-body">
+                        <i class="fas fa-cogs fa-3x text-warning mb-3"></i>
+                        <h5 class="card-title">Gestion</h5>
+                        <p class="card-text">Gérer les fournisseurs et demandeurs</p>
+                        <a href="gestion.php" class="btn btn-warning text-dark">Gérer</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
                         <i class="fas fa-chart-line fa-3x text-primary mb-3"></i>
                         <h5 class="card-title">Analytiques</h5>
                         <p class="card-text">Consulter les analyses et rapports</p>

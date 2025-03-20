@@ -131,6 +131,18 @@ foreach ($products as $product) {
     }
     $groupedProducts[$category][] = $product;
 }
+
+// In your query where you display stock entries, use COALESCE
+$stockEntries = $db->query("
+    SELECT 
+        se.*,
+        p.designation as product_name,
+        COALESCE(s.name, 'Fournisseur non spécifié') as supplier_name
+    FROM stock_entries se
+    JOIN products p ON se.product_id = p.id
+    LEFT JOIN suppliers s ON se.supplier_id = s.id
+    ORDER BY se.entry_date DESC
+")->fetchAll();
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -233,36 +245,30 @@ foreach ($products as $product) {
                 <!-- Section Filter -->
                 <div class="card mb-3 border-0 bg-light">
                     <div class="card-body p-3">
-                        <form id="sectionFilter">
-                            <div class="row g-3">
-                                <div class="col-md-3 pe-2">
-                                    <label for="categorySelect" class="form-label mb-1">Catégorie</label>
-                                    <select name="category" id="categorySelect" class="form-select shadow-sm">
-                                        <option value="all">Toutes les catégories</option>
-                                        <?php foreach ($categories as $category): ?>
-                                            <option value="<?= htmlspecialchars($category) ?>" <?= $selectedCategory === $category ? 'selected' : '' ?>>
-                                                <?= htmlspecialchars($category) ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
-                                <div class="col-md-2 px-2">
-                                    <label class="form-label mb-1">&nbsp;</label>
-                                    <button type="submit" class="btn btn-primary w-100 shadow-sm">
-                                        <i class="fas fa-filter me-1"></i>Filtrer
-                                    </button>
-                                </div>
-                                <div class="col-md-7 ps-2">
-                                    <label for="searchInput" class="form-label mb-1">Rechercher</label>
-                                    <div class="input-group shadow-sm">
-                                        <input type="text" class="form-control" id="searchInput" placeholder="Rechercher un article...">
-                                        <button class="btn btn-outline-secondary" type="button">
-                                            <i class="fas fa-search"></i>
-                                        </button>
-                                    </div>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="categorySelect" class="form-label mb-1">Catégorie</label>
+                                <select name="category" id="categorySelect" class="form-select shadow-sm">
+                                    <option value="all">Toutes les catégories</option>
+                                    <?php foreach ($categories as $category): ?>
+                                        <option value="<?= htmlspecialchars($category) ?>">
+                                            <?= htmlspecialchars($category) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-8">
+                                <label for="searchInput" class="form-label mb-1">Rechercher</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">
+                                        <i class="fas fa-search"></i>
+                                    </span>
+                                    <input type="text" id="searchInput" class="form-control" 
+                                           placeholder="Rechercher un article par désignation..." 
+                                           aria-label="Search">
                                 </div>
                             </div>
-                        </form>
+                        </div>
                     </div>
                 </div>
 
@@ -279,48 +285,7 @@ foreach ($products as $product) {
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($groupedProducts as $section => $sectionProducts): ?>
-                            <!-- Section Header -->
-                            <tr class="table-primary">
-                                <th colspan="7" class="section-header">
-                                    <i class="fas fa-folder-open me-2"></i><?= htmlspecialchars($section) ?>
-                                    <span class="badge bg-secondary ms-2"><?= count($sectionProducts) ?> articles</span>
-                                </th>
-                            </tr>
-                            <?php foreach ($sectionProducts as $product): ?>
-                            <tr>
-                                <td class="align-middle"><?= htmlspecialchars($product['designation']) ?></td>
-                                <td class="text-center align-middle"><?= $product['report_stock'] ?></td>
-                                <td class="text-center align-middle"><?= $product['entre'] ?></td>
-                                <td class="text-center align-middle"><?= $product['sortie'] ?></td>
-                                <td class="text-center align-middle">
-                                    <span class="badge bg-<?= $product['current_stock'] > 0 ? 'success' : 'danger' ?> px-3 py-2">
-                                        <?= $product['current_stock'] ?>
-                                    </span>
-                                </td>
-                                <td class="text-center align-middle"><?= date('d/m/Y H:i', strtotime($product['updated_at'])) ?></td>
-                                <td class="text-center align-middle">
-                                    <div class="btn-group">
-                                        <button type="button" class="btn btn-sm btn-outline-primary edit-article" 
-                                                data-id="<?= $product['id'] ?>"
-                                                data-designation="<?= htmlspecialchars($product['designation']) ?>"
-                                                data-report-stock="<?= $product['report_stock'] ?>"
-                                                data-bs-toggle="modal" data-bs-target="#editArticleModal"
-                                                title="Modifier">
-                                            <i class="fas fa-edit"></i>
-                                        </button>
-                                        <button type="button" class="btn btn-sm btn-outline-danger delete-article"
-                                                data-id="<?= $product['id'] ?>"
-                                                data-designation="<?= htmlspecialchars($product['designation']) ?>"
-                                                data-bs-toggle="modal" data-bs-target="#deleteArticleModal"
-                                                title="Supprimer">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        <?php endforeach; ?>
+                        <!-- Content will be loaded dynamically via AJAX -->
                     </tbody>
                 </table>
             </div>
@@ -447,48 +412,166 @@ foreach ($products as $product) {
     <script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
     <script>
         $(document).ready(function() {
-            // Handle category change
-            $('#categorySelect').change(function() {
-                $('#sectionFilter').submit(); // Auto-submit on category change
-            });
+            // Add loading indicator
+            function showLoading() {
+                $('#stockTable tbody').html(`
+                    <tr>
+                        <td colspan="7" class="text-center py-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Chargement...</span>
+                            </div>
+                            <div class="mt-2">Chargement des articles...</div>
+                        </td>
+                    </tr>
+                `);
+            }
 
-            // Initialize DataTable with category grouping
-
-            // Initialize DataTable
-            $('#stockTable').DataTable({
-                orderFixed: [[1, 'asc']],  // Always sort by section first
-                rowGroup: {
-                    dataSrc: 1  // Group by description (section) column
-                },
-                order: [[0, 'asc']],
-                pageLength: 25,
-                language: {
-                    search: "Rechercher :",
-                    lengthMenu: "Afficher _MENU_ éléments par page",
-                    info: "Affichage de _START_ à _END_ sur _TOTAL_ éléments",
-                    paginate: {
-                        first: "Premier",
-                        last: "Dernier",
-                        next: "Suivant",
-                        previous: "Précédent"
+            function fetchArticles() {
+                showLoading();
+                const category = $('#categorySelect').val();
+                const search = $('#searchInput').val();
+                
+                $.ajax({
+                    url: 'fetch_articles.php',
+                    method: 'GET',
+                    data: {
+                        category: category,
+                        search: search
+                    },
+                    success: function(data) {
+                        // Clear existing table content
+                        $('#stockTable tbody').empty();
+                        
+                        if (Object.keys(data).length === 0) {
+                            $('#stockTable tbody').html(`
+                                <tr>
+                                    <td colspan="7" class="text-center py-4">
+                                        <i class="fas fa-search fa-2x text-muted mb-3"></i>
+                                        <div class="text-muted">Aucun article trouvé</div>
+                                    </td>
+                                </tr>
+                            `);
+                            return;
+                        }
+                        
+                        // Populate table with new data
+                        Object.entries(data).forEach(([category, products]) => {
+                            // Add category header
+                            $('#stockTable tbody').append(`
+                                <tr class="table-primary">
+                                    <th colspan="7" class="section-header">
+                                        <i class="fas fa-folder-open me-2"></i>${category}
+                                        <span class="badge bg-secondary ms-2">${products.length} articles</span>
+                                    </th>
+                                </tr>
+                            `);
+                            
+                            // Add products
+                            products.forEach(product => {
+                                const designation = product.designation.replace(/"/g, '&quot;');
+                                const description = (product.description || '').replace(/"/g, '&quot;');
+                                
+                                $('#stockTable tbody').append(`
+                                    <tr>
+                                        <td class="align-middle">${designation}</td>
+                                        <td class="text-center align-middle">${product.report_stock}</td>
+                                        <td class="text-center align-middle">${product.entre}</td>
+                                        <td class="text-center align-middle">${product.sortie}</td>
+                                        <td class="text-center align-middle">
+                                            <span class="badge bg-${product.current_stock > 0 ? 'success' : 'danger'} px-3 py-2">
+                                                ${product.current_stock}
+                                            </span>
+                                        </td>
+                                        <td class="text-center align-middle">
+                                            ${new Date(product.updated_at).toLocaleDateString('fr-FR', {
+                                                day: '2-digit',
+                                                month: '2-digit',
+                                                year: 'numeric',
+                                                hour: '2-digit',
+                                                minute: '2-digit'
+                                            })}
+                                        </td>
+                                        <td class="text-center align-middle">
+                                            <div class="btn-group">
+                                                <button type="button" class="btn btn-sm btn-outline-primary edit-article" 
+                                                        data-id="${product.id}"
+                                                        data-designation="${designation}"
+                                                        data-description="${description}"
+                                                        data-report-stock="${product.report_stock}"
+                                                        data-bs-toggle="modal" 
+                                                        data-bs-target="#editArticleModal"
+                                                        title="Modifier">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                                <button type="button" class="btn btn-sm btn-outline-danger delete-article"
+                                                        data-id="${product.id}"
+                                                        data-designation="${designation}"
+                                                        data-bs-toggle="modal" 
+                                                        data-bs-target="#deleteArticleModal"
+                                                        title="Supprimer">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `);
+                            });
+                        });
+                        
+                        // Reattach event handlers for edit buttons
+                        attachEditHandlers();
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error fetching articles:', error);
+                        $('#stockTable tbody').html(`
+                            <tr>
+                                <td colspan="7" class="text-center py-4 text-danger">
+                                    <i class="fas fa-exclamation-circle fa-2x mb-3"></i>
+                                    <div>Erreur lors du chargement des articles. Veuillez réessayer.</div>
+                                </td>
+                            </tr>
+                        `);
                     }
-                }
-            });
+                });
+            }
 
-            // Handle edit button clicks
-            $('.edit-article').click(function() {
-                const id = $(this).data('id');
-                const designation = $(this).data('designation');
-                const description = $(this).data('description');
-                const reportStock = $(this).data('report-stock');
+            // Improved debounce function
+            function debounce(func, wait) {
+                let timeout;
+                return function executedFunction(...args) {
+                    const later = () => {
+                        clearTimeout(timeout);
+                        func(...args);
+                    };
+                    clearTimeout(timeout);
+                    timeout = setTimeout(later, wait);
+                };
+            }
 
-                $('#edit_article_id').val(id);
-                $('#edit_designation').val(designation);
-                $('#edit_description').val(description);
-                $('#edit_report_stock').val(reportStock);
+            // Initial load
+            fetchArticles();
 
-                $('#editArticleModal').modal('show');
-            });
+            // Handle category select change
+            $('#categorySelect').on('change', fetchArticles);
+
+            // Handle search input with improved debounce
+            const debouncedFetch = debounce(fetchArticles, 300);
+            $('#searchInput').on('input', debouncedFetch);
+
+            // Function to attach edit handlers
+            function attachEditHandlers() {
+                $('.edit-article').click(function() {
+                    const id = $(this).data('id');
+                    const designation = $(this).data('designation');
+                    const description = $(this).data('description');
+                    const reportStock = $(this).data('report-stock');
+
+                    $('#edit_article_id').val(id);
+                    $('#edit_designation').val(designation);
+                    $('#edit_description').val(description);
+                    $('#edit_report_stock').val(reportStock);
+                });
+            }
 
             // Auto-hide alerts after 5 seconds
             setTimeout(function() {
