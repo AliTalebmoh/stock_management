@@ -3,7 +3,6 @@
     "description": "Stock Management System",
     "require": {
         "php": ">=8.0",
-        "phpoffice/phpspreadsheet": "^1.29",
         "tecnickcom/tcpdf": "^6.6"
     },
     "autoload": {
@@ -11,4 +10,4 @@
             "App\\": "src/"
         }
     }
-} 
+}

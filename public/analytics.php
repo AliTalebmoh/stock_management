@@ -159,7 +159,15 @@ try {
     </nav>
 
     <div class="container mt-4">
-        <h2 class="mb-4">Analytics Dashboard</h2>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="mb-0">Tableau de Bord</h2>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="index.php" class="text-decoration-none">Accueil</a></li>
+                    <li class="breadcrumb-item active">Analytiques</li>
+                </ol>
+            </nav>
+        </div>
 
         <!-- Overall Statistics -->
         <div class="row mb-4">

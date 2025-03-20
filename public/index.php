@@ -46,6 +46,17 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
     <div class="container mt-5">
         <div class="row g-4">
+            <!-- Transactions History Card -->
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <i class="fas fa-history fa-3x text-primary mb-3"></i>
+                        <h5 class="card-title">Historique</h5>
+                        <p class="card-text">Consulter l'historique des entrées et sorties</p>
+                        <a href="transactions.php" class="btn btn-primary">Voir Historique</a>
+                    </div>
+                </div>
+            </div>
             <div class="col-md-6 col-lg-3">
                 <div class="card h-100 text-center">
                     <div class="card-body">

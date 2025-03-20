@@ -259,7 +259,7 @@ $demanders = $db->query("SELECT * FROM demanders ORDER BY name")->fetchAll();
                                 <thead>
                                     <tr>
                                         <th>Nom</th>
-                                        <th>Département</th>
+                                        <th>Observation</th>
                                         <th>Contact</th>
                                         <th>Actions</th>
                                     </tr>
@@ -346,7 +346,7 @@ $demanders = $db->query("SELECT * FROM demanders ORDER BY name")->fetchAll();
                             <input type="text" class="form-control" name="demander_name" required>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Département</label>
+                            <label class="form-label">department</label>
                             <input type="text" class="form-control" name="department" required>
                         </div>
                         <div class="mb-3">
