@@ -3,7 +3,7 @@
 return [
     'host' => 'localhost',
     'dbname' => 'stock_management',
-    'username' => 'Arthur',
-    'password' => '+*-/',
+    'username' => 'root',
+    'password' => '',
     'charset' => 'utf8mb4'
 ]; 
