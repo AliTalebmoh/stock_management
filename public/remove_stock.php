@@ -2,25 +2,6 @@
 require_once __DIR__ . '/../vendor/autoload.php';
 use App\Database\Connection;
 
-// Custom PDF class
-class BonDeSortiePDF extends \TCPDF {
-    // Page header
-    public function Header() {
-        // Logo - Add error suppression operator (@) to suppress libpng warnings - smaller logo
-        @$this->Image(__DIR__ . '/assets/images/logo.png', 15, 10, 50, '', 'PNG', '', 'T', false, 300, '', false, false, 0, false, false, false);
-        
-        // Add BON DE SORTIE title beside the logo
-        $this->SetFont('helvetica', 'B', 20);
-        $this->SetXY(80, 20);
-        $this->Cell(100, 10, 'BON DE SORTIE', 0, 0, 'L');
-    }
-
-    // Page footer - empty
-    public function Footer() {
-        // Empty footer
-    }
-}
-
 session_start();
 $db = Connection::getInstance();
 
@@ -68,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['requester_id'] = $_POST['requester_id'];
             $_SESSION['exit_date'] = $_POST['exit_date'];
             $_SESSION['bon_number'] = $_POST['bon_number'];
+            $_SESSION['observation'] = $_POST['observation'] ?? '';
             
             $success = "Article ajouté au bon de sortie";
         } 
@@ -89,10 +71,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $requesterId = $_SESSION['requester_id'];
             $exitDate = $_SESSION['exit_date'];
             $bonNumber = $_SESSION['bon_number'];
+            $observation = $_SESSION['observation'] ?? '';
             
             // Create the exit record
-            $stmt = $db->prepare("INSERT INTO stock_exits (demander_id, exit_date, bon_number) VALUES (?, ?, ?)");
-            $stmt->execute([$requesterId, $exitDate, $bonNumber]);
+            $stmt = $db->prepare("INSERT INTO stock_exits (demander_id, exit_date, bon_number, observation) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$requesterId, $exitDate, $bonNumber, $observation]);
             $exitId = $db->lastInsertId();
             
             // Add all items
@@ -108,16 +91,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             $db->commit();
             
-            // Generate and download PDF
-            generatePDF($exitId, $db);
+            // No longer generating PDF here
+            // Instead, just show a success message
             
             // Clear the cart
             unset($_SESSION['cart']);
             unset($_SESSION['requester_id']);
             unset($_SESSION['exit_date']);
             unset($_SESSION['bon_number']);
+            unset($_SESSION['observation']);
             
-            $_SESSION['success'] = "Bon de sortie généré avec succès";
+            $_SESSION['success'] = "Articles retirés du stock avec succès. Consultez l'historique des transactions pour générer le bon de sortie.";
             header('Location: remove_stock.php');
             exit;
         }
@@ -127,6 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             unset($_SESSION['requester_id']);
             unset($_SESSION['exit_date']);
             unset($_SESSION['bon_number']);
+            unset($_SESSION['observation']);
             $success = "Bon de sortie annulé";
         }
         
@@ -135,160 +120,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $db->rollBack();
         $error = "Erreur : " . $e->getMessage();
     }
-}
-
-/**
- * Generate PDF for Bon de Sortie
- */
-function generatePDF($exitId, $db) {
-    // Get exit data
-    $stmt = $db->prepare("
-        SELECT 
-            e.id, e.bon_number, e.exit_date, 
-            d.name as demander_name, d.department
-        FROM 
-            stock_exits e
-            JOIN demanders d ON e.demander_id = d.id
-        WHERE 
-            e.id = ?
-    ");
-    $stmt->execute([$exitId]);
-    $exitData = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    // Get exit items
-    $stmt = $db->prepare("
-        SELECT 
-            i.quantity, 
-            p.id as article_id, p.designation
-        FROM 
-            stock_exit_items i
-            JOIN products p ON i.product_id = p.id
-        WHERE 
-            i.exit_id = ?
-    ");
-    $stmt->execute([$exitId]);
-    $exitItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Create new PDF document
-    $pdf = new BonDeSortiePDF('P', 'mm', 'A4', true, 'UTF-8', false);
-    
-    // Set document information
-    $pdf->SetCreator('Stock Management System');
-    $pdf->SetAuthor('Al Akhawayn University');
-    $pdf->SetTitle('Bon de Sortie - ' . $exitData['bon_number']);
-    $pdf->SetSubject('Bon de Sortie');
-    
-    // Set margins
-    $pdf->SetMargins(15, 15, 15);
-    $pdf->SetHeaderMargin(5);
-    $pdf->SetFooterMargin(10);
-    
-    // Set auto page breaks
-    $pdf->SetAutoPageBreak(TRUE, 15);
-    
-    // Add a page
-    $pdf->AddPage();
-    
-    // Add date and bon information
-    $pdf->SetY(50);
-    $dateObj = new DateTime($exitData['exit_date']);
-    $day = $dateObj->format('d');
-    $month = $dateObj->format('m');
-    $year = $dateObj->format('Y');
-    
-    // Info box header - only date and bon number, removed demandeur
-    $pageWidth = $pdf->getPageWidth() - 30; // 30mm margins total
-    $halfWidth = $pageWidth / 2;
-    
-    $pdf->SetFont('helvetica', 'B', 10);
-    $pdf->Cell($halfWidth, 10, 'DATE: ' . $day . '/' . $month . '/' . $year, 1, 0, 'L');
-    $pdf->Cell($halfWidth, 10, 'BON N°: ' . $exitData['bon_number'], 1, 1, 'L');
-    
-    // Main table header
-    $pdf->SetFont('helvetica', 'B', 10);
-    
-    // Calculate cell widths based on available page width 
-    $pageWidth = $pdf->getPageWidth() - 30; // 30mm margins total
-    $articleWidth = $pageWidth * 0.25;  // 25%
-    $refWidth = $pageWidth * 0.2;       // 20%
-    $specWidth = $pageWidth * 0.4;      // 40%
-    $qteWidth = $pageWidth * 0.15;      // 15%
-    
-    // Ensure we have at least one item
-    if (empty($exitItems)) {
-        $exitItems = [
-            [
-                'article_id' => '',
-                'designation' => '',
-                'quantity' => ''
-            ]
-        ];
-    }
-    
-    // Create table header row
-    $pdf->Cell($articleWidth, 10, 'ARTICLE', 1, 0, 'C');
-    $pdf->Cell($refWidth, 10, 'RÉFÉRENCE', 1, 0, 'C');
-    $pdf->Cell($specWidth, 10, 'SPÉCIFICATION', 1, 0, 'C');
-    $pdf->Cell($qteWidth, 10, 'QTÉ', 1, 1, 'C');
-    
-    // Add table rows
-    $pdf->SetFont('helvetica', '', 10);
-    
-    foreach ($exitItems as $item) {
-        // Get first word of designation for Article name
-        $parts = explode(' ', $item['designation']);
-        $article = $parts[0];
-        
-        $pdf->Cell($articleWidth, 10, $article, 1, 0, 'L');
-        $pdf->Cell($refWidth, 10, $item['article_id'], 1, 0, 'C');
-        $pdf->Cell($specWidth, 10, '', 1, 0, 'L'); // Empty specification as requested
-        $pdf->Cell($qteWidth, 10, $item['quantity'], 1, 1, 'C');
-    }
-    
-    // Add the demandeur and responsable info line in the table
-    $pdf->SetFont('helvetica', 'B', 10);
-    $pdf->Cell($pageWidth/2, 10, 'Demandeur : ' . $exitData['demander_name'], 1, 0, 'L');
-    $pdf->Cell($pageWidth/2, 10, 'Responsable du stock : N,HERRAR', 1, 1, 'R');
-    
-    // Add a small space after the table before signature section
-    $pdf->Ln(20);
-    
-    // Signature section - split into two sections as shown in the image
-    $halfWidth = $pageWidth / 2;
-    
-    // Manager on left side
-    $pdf->SetFont('helvetica', 'B', 10);
-    $pdf->Cell($halfWidth/2, 10, 'Manager:', 0, 0, 'L');
-    $pdf->Cell($halfWidth/2, 10, '', 0, 0, 'L');
-    
-    // Responsable des achats on right side (right aligned)
-    $pdf->Cell($halfWidth/2, 10, 'Responsable des achats:', 0, 0, 'R');
-    $pdf->Cell($halfWidth/2, 10, '', 0, 1, 'L');
-    
-    // Get uploads directory path and ensure it exists
-    $exportsDir = __DIR__ . '/exports';
-    if (!is_dir($exportsDir)) {
-        mkdir($exportsDir, 0755, true);
-    }
-    
-    // Save PDF file
-    $pdfFilename = 'exports/bon_sortie_' . $exitData['bon_number'] . '.pdf';
-    $pdf->Output(__DIR__ . '/' . $pdfFilename, 'F');
-    
-    // JavaScript to trigger file save dialog
-    echo '<script>
-        // Show save dialog
-        let saveLink = document.createElement("a");
-        saveLink.href = "' . $pdfFilename . '";
-        saveLink.download = "Bon_de_sortie_' . $exitData['bon_number'] . '.pdf";
-        saveLink.click();
-        
-        // Redirect after a short delay
-        setTimeout(function() {
-            window.location.href = "remove_stock.php";
-        }, 1500);
-    </script>';
-    exit;
 }
 
 // Get products and requesters
@@ -450,6 +281,14 @@ if (isset($_SESSION['success'])) {
                 </div>
                 
                 <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label for="observation" class="form-label">Observation / Motif de la sortie</label>
+                        <textarea class="form-control" id="observation" name="observation" rows="2" 
+                                 placeholder="Précisez le motif ou l'usage prévu pour les articles demandés"><?= $_SESSION['observation'] ?? '' ?></textarea>
+                    </div>
+                </div>
+                
+                <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Produit</label>
                         <select name="product_id" id="product_id" class="form-select">
@@ -513,7 +352,7 @@ if (isset($_SESSION['success'])) {
                         </form>
                         <form method="POST">
                             <button type="submit" name="generate_bon" class="btn btn-danger">
-                                <i class="fas fa-file-pdf me-1"></i> Générer le Bon de Sortie
+                                <i class="fas fa-minus-circle me-1"></i> Sortir du Stock
                             </button>
                         </form>
                     </div>

@@ -37,11 +37,56 @@ if (isset($_POST['request_article'])) {
 // Delete article
 if (isset($_POST['delete_article']) && isset($_POST['article_id'])) {
     try {
-        $stmt = $db->prepare("DELETE FROM products WHERE id = ?");
-        $stmt->execute([$_POST['article_id']]);
-        $success = "Article supprimé avec succès";
+        // First check if the product has any dependencies
+        $articleId = $_POST['article_id'];
+        
+        // Check stock entries
+        $stmt = $db->prepare("SELECT COUNT(*) FROM stock_entries WHERE product_id = ?");
+        $stmt->execute([$articleId]);
+        $entriesCount = $stmt->fetchColumn();
+        
+        // Check stock exits
+        $stmt = $db->prepare("SELECT COUNT(*) FROM stock_exit_items WHERE product_id = ?");
+        $stmt->execute([$articleId]);
+        $exitsCount = $stmt->fetchColumn();
+        
+        if ($entriesCount > 0 || $exitsCount > 0) {
+            // Product has dependencies, cannot delete
+            $error = "Impossible de supprimer cet article car il est utilisé dans des entrées ou sorties de stock. Utilisez la suppression forcée pour les articles de test.";
+        } else {
+            // No dependencies, safe to delete
+            $stmt = $db->prepare("DELETE FROM products WHERE id = ?");
+            $stmt->execute([$articleId]);
+            $success = "Article supprimé avec succès";
+        }
     } catch (PDOException $e) {
         $error = "Erreur lors de la suppression: " . $e->getMessage();
+    }
+}
+
+// Force delete article (including related records)
+if (isset($_POST['force_delete_article']) && isset($_POST['article_id'])) {
+    try {
+        $db->beginTransaction();
+        $articleId = $_POST['article_id'];
+        
+        // Delete related stock_exit_items
+        $stmt = $db->prepare("DELETE FROM stock_exit_items WHERE product_id = ?");
+        $stmt->execute([$articleId]);
+        
+        // Delete related stock_entries
+        $stmt = $db->prepare("DELETE FROM stock_entries WHERE product_id = ?");
+        $stmt->execute([$articleId]);
+        
+        // Now delete the product itself
+        $stmt = $db->prepare("DELETE FROM products WHERE id = ?");
+        $stmt->execute([$articleId]);
+        
+        $db->commit();
+        $success = "Article et ses données associées supprimés avec succès";
+    } catch (PDOException $e) {
+        $db->rollBack();
+        $error = "Erreur lors de la suppression forcée: " . $e->getMessage();
     }
 }
 
@@ -85,9 +130,6 @@ $categoriesQuery = $db->query("
 ");
 
 $categories = $categoriesQuery->fetchAll(PDO::FETCH_COLUMN);
-
-// Get selected category from filter
-$selectedCategory = isset($_GET['category']) ? $_GET['category'] : 'all';
 
 // Get selected category from filter
 $selectedCategory = isset($_GET['category']) ? $_GET['category'] : 'all';
@@ -406,6 +448,45 @@ $stockEntries = $db->query("
         </div>
     </div>
 
+    <!-- Delete Article Modal -->
+    <div class="modal fade" id="deleteArticleModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Supprimer l'Article</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST">
+                    <div class="modal-body">
+                        <input type="hidden" name="article_id" id="delete_article_id">
+                        <p>Êtes-vous sûr de vouloir supprimer l'article suivant?</p>
+                        <p class="fw-bold text-danger" id="delete_article_name"></p>
+                        <p class="small text-muted">Cette action est irréversible.</p>
+                        
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Note:</strong> Si cet article a été utilisé dans des entrées ou sorties de stock, il ne pourra pas être supprimé normalement.
+                        </div>
+                        
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            <strong>Attention:</strong> La suppression forcée supprimera l'article ET TOUTES ses entrées/sorties associées. À utiliser uniquement pour les articles de test.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                        <button type="submit" name="delete_article" class="btn btn-danger">
+                            <i class="fas fa-trash me-1"></i> Supprimer
+                        </button>
+                        <button type="submit" name="force_delete_article" class="btn btn-danger" onclick="return confirm('ATTENTION: Cette action supprimera définitivement toutes les données associées à cet article. Êtes-vous absolument sûr de vouloir continuer?')">
+                            <i class="fas fa-skull-crossbones me-1"></i> Suppression Forcée
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
@@ -570,6 +651,15 @@ $stockEntries = $db->query("
                     $('#edit_designation').val(designation);
                     $('#edit_description').val(description);
                     $('#edit_report_stock').val(reportStock);
+                });
+                
+                // Set up delete button handlers
+                $('.delete-article').click(function() {
+                    const id = $(this).data('id');
+                    const designation = $(this).data('designation');
+                    
+                    $('#delete_article_id').val(id);
+                    $('#delete_article_name').text(designation);
                 });
             }
 

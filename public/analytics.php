@@ -303,6 +303,7 @@ try {
                 WHERE YEAR(se.exit_date) = YEAR(CURRENT_DATE) - 1
             ), 0) as previous_year_exits
         FROM products p
+        WHERE (p.is_test IS NULL OR p.is_test = FALSE)
     ")->fetch(PDO::FETCH_ASSOC);
 
     // Get category statistics - Simplified and more accurate
@@ -314,6 +315,7 @@ try {
             COALESCE(SUM(p.entre), 0) as total_entries,
             COALESCE(SUM(p.sortie), 0) as total_exits
         FROM products p
+        WHERE (p.is_test IS NULL OR p.is_test = FALSE)
         GROUP BY p.category
         ORDER BY total_products DESC
     ")->fetchAll(PDO::FETCH_ASSOC);
@@ -321,10 +323,12 @@ try {
     // Get most consumed products - Simplified query
     $topProducts = $db->query("
         SELECT 
-            p.designation,
+            p.id,
+            p.designation as product_name,
             p.sortie as total_quantity
         FROM products p
         WHERE p.sortie > 0
+        AND (p.is_test IS NULL OR p.is_test = FALSE)
         ORDER BY p.sortie DESC
         LIMIT 10
     ")->fetchAll(PDO::FETCH_ASSOC);
@@ -351,7 +355,7 @@ try {
     error_log("Top Demanders: " . print_r($topDemanders, true));
 
     // Prepare data for charts
-    $productNames = array_column($topProducts, 'designation');
+    $productNames = array_column($topProducts, 'product_name');
     $productQuantities = array_column($topProducts, 'total_quantity');
     
     $demanderNames = array_map(function($d) {
@@ -401,13 +405,19 @@ try {
         }
         .stat-card {
             transition: transform 0.2s;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: none;
         }
         .stat-card:hover {
             transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
         }
         .chart-container {
-            min-height: 400px;
+            min-height: 450px;
             margin-bottom: 2rem;
+            position: relative;
         }
         .report-buttons {
             display: flex;
@@ -418,6 +428,74 @@ try {
             display: flex;
             align-items: center;
             gap: 10px;
+        }
+        .card {
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border: none;
+            margin-bottom: 20px;
+        }
+        .card-title {
+            font-weight: 600;
+            color: #333;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .dashboard-card-primary {
+            border-left: 4px solid #007bff;
+        }
+        .dashboard-card-success {
+            border-left: 4px solid #28a745;
+        }
+        .dashboard-card-info {
+            border-left: 4px solid #17a2b8;
+        }
+        .dashboard-card-warning {
+            border-left: 4px solid #ffc107;
+        }
+        .display-6 {
+            font-weight: 700;
+        }
+        .table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+        .chart-legend {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-top: 15px;
+            gap: 15px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            font-size: 0.85rem;
+        }
+        .legend-color {
+            width: 15px;
+            height: 15px;
+            border-radius: 3px;
+            margin-right: 5px;
+        }
+        .empty-chart-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #6c757d;
+        }
+        .card-header-tabs {
+            margin-right: 0;
+            margin-bottom: -1px;
+            margin-left: 0;
+            border-bottom: 0;
+        }
+        .chart-controls {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 15px;
         }
     </style>
 </head>
@@ -525,64 +603,100 @@ try {
                 </div>
             <?php endif; ?>
         </div>
-        
+
         <!-- Overall Statistics -->
         <div class="row mb-4">
             <div class="col-md-3">
-                <div class="card stat-card">
+                <div class="card stat-card dashboard-card-primary">
                     <div class="card-body text-center">
-                        <h5 class="card-title text-primary">Total Products</h5>
-                        <p class="card-text display-6"><?= number_format($overallStats['total_products']) ?></p>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="card-title mb-0 text-primary">Total Produits</h5>
+                            <i class="fas fa-box fa-2x text-primary opacity-50"></i>
+                        </div>
+                        <p class="card-text display-6 mb-1"><?= number_format($overallStats['total_products']) ?></p>
+                        <p class="text-muted small mb-0">Articles dans l'inventaire</p>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card stat-card">
+                <div class="card stat-card dashboard-card-success">
                     <div class="card-body text-center">
-                        <h5 class="card-title text-success">Current Stock</h5>
-                        <p class="card-text display-6"><?= number_format($overallStats['total_stock']) ?></p>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="card-title mb-0 text-success">Stock Actuel</h5>
+                            <i class="fas fa-cubes fa-2x text-success opacity-50"></i>
+                        </div>
+                        <p class="card-text display-6 mb-1"><?= number_format($overallStats['total_stock']) ?></p>
+                        <p class="text-muted small mb-0">Unités disponibles</p>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card stat-card">
+                <div class="card stat-card dashboard-card-info">
                     <div class="card-body text-center">
-                        <h5 class="card-title text-info">Total Entries</h5>
-                        <p class="card-text display-6"><?= number_format($overallStats['total_entries']) ?></p>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="card-title mb-0 text-info">Total Entrées</h5>
+                            <i class="fas fa-arrow-circle-down fa-2x text-info opacity-50"></i>
+                        </div>
+                        <p class="card-text display-6 mb-1"><?= number_format($overallStats['total_entries']) ?></p>
+                        <p class="text-muted small mb-0">Unités reçues</p>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card stat-card">
+                <div class="card stat-card dashboard-card-warning">
                     <div class="card-body text-center">
-                        <h5 class="card-title text-warning">Total Exits</h5>
-                        <p class="card-text display-6"><?= number_format($overallStats['total_exits']) ?></p>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="card-title mb-0 text-warning">Total Sorties</h5>
+                            <i class="fas fa-arrow-circle-up fa-2x text-warning opacity-50"></i>
+                        </div>
+                        <p class="card-text display-6 mb-1"><?= number_format($overallStats['total_exits']) ?></p>
+                        <p class="text-muted small mb-0">Unités distribuées</p>
                     </div>
                 </div>
             </div>
         </div>
-        
+
         <!-- Category Statistics -->
         <div class="row mb-4">
             <div class="col-12">
                 <div class="card">
                     <div class="card-body">
-                        <h5 class="card-title mb-4">Statistiques par Catégorie</h5>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="card-title mb-0">
+                                <i class="fas fa-layer-group me-2"></i>Statistiques par Catégorie
+                            </h5>
+                            <span class="badge bg-secondary"><?= count($categoryStats) ?> catégories</span>
+                        </div>
                         <div class="table-responsive">
-                            <table class="table table-striped">
+                            <table class="table table-striped table-hover">
                                 <thead>
                                     <tr>
                                         <th>Catégorie</th>
                                         <th class="text-center">Articles</th>
                                         <th class="text-center">Stock Actuel</th>
+                                        <th class="text-center">% du Stock Total</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <?php foreach ($categoryStats as $stat): ?>
+                                    <?php 
+                                    foreach ($categoryStats as $stat): 
+                                        $stockPercentage = 0;
+                                        if ($overallStats['total_stock'] > 0) {
+                                            $stockPercentage = ($stat['total_stock'] / $overallStats['total_stock']) * 100;
+                                        }
+                                    ?>
                                     <tr>
-                                        <td><?= htmlspecialchars($stat['category'] ?: 'Non catégorisé') ?></td>
+                                        <td><i class="fas fa-folder me-2 text-muted"></i><?= htmlspecialchars($stat['category'] ?: 'Non catégorisé') ?></td>
                                         <td class="text-center"><?= number_format($stat['total_products']) ?></td>
                                         <td class="text-center"><?= number_format($stat['total_stock']) ?></td>
+                                        <td class="text-center">
+                                            <div class="d-flex align-items-center justify-content-center">
+                                                <div class="progress flex-grow-1" style="height: 8px; max-width: 100px;">
+                                                    <div class="progress-bar bg-success" style="width: <?= $stockPercentage ?>%"></div>
+                                                </div>
+                                                <span class="ms-2 small"><?= number_format($stockPercentage, 1) ?>%</span>
+                                            </div>
+                                        </td>
                                     </tr>
                                     <?php endforeach; ?>
                                 </tbody>
@@ -592,15 +706,36 @@ try {
                 </div>
             </div>
         </div>
-        
+
         <!-- Charts -->
         <div class="row">
             <!-- Most Consumed Products -->
-            <div class="col-md-6">
-                <div class="card">
+            <div class="col-12 mb-4">
+                <div class="card dashboard-card-info">
                     <div class="card-body">
-                        <h5 class="card-title">Articles les plus consommés</h5>
-                        <div class="chart-container">
+                        <h5 class="card-title">
+                            <i class="fas fa-chart-bar me-2"></i> Articles les plus consommés
+                        </h5>
+                        <div class="chart-controls">
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-primary active" id="productsBarBtn">
+                                    <i class="fas fa-chart-bar"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-primary" id="productsPieBtn">
+                                    <i class="fas fa-chart-pie"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-primary" id="productsHorizontalBtn">
+                                    <i class="fas fa-bars"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="chart-container" style="height: 500px;">
+                            <?php if (empty($productNames)): ?>
+                                <div class="empty-chart-message">
+                                    <i class="fas fa-chart-bar fa-3x mb-3"></i>
+                                    <p>Aucune donnée disponible pour l'affichage</p>
+                                </div>
+                            <?php endif; ?>
                             <canvas id="productsChart"></canvas>
                         </div>
                     </div>
@@ -608,11 +743,32 @@ try {
             </div>
 
             <!-- Most Active Demanders -->
-            <div class="col-md-6">
-                <div class="card">
+            <div class="col-12 mb-4">
+                <div class="card dashboard-card-warning">
                     <div class="card-body">
-                        <h5 class="card-title">Demandeurs les plus actifs</h5>
-                        <div class="chart-container">
+                        <h5 class="card-title">
+                            <i class="fas fa-users me-2"></i> Demandeurs les plus actifs
+                        </h5>
+                        <div class="chart-controls">
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-primary active" id="demandersBarBtn">
+                                    <i class="fas fa-chart-bar"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-primary" id="demandersPieBtn">
+                                    <i class="fas fa-chart-pie"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-primary" id="demandersHorizontalBtn">
+                                    <i class="fas fa-bars"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="chart-container" style="height: 500px;">
+                            <?php if (empty($demanderNames)): ?>
+                                <div class="empty-chart-message">
+                                    <i class="fas fa-users fa-3x mb-3"></i>
+                                    <p>Aucune donnée disponible pour l'affichage</p>
+                                </div>
+                            <?php endif; ?>
                             <canvas id="demandersChart"></canvas>
                         </div>
                     </div>
@@ -624,53 +780,236 @@ try {
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Products Chart
-        const productsCtx = document.getElementById('productsChart').getContext('2d');
-        new Chart(productsCtx, {
-            type: 'bar',
-            data: {
-                labels: <?= json_encode($productNames) ?>,
-                datasets: [{
-                    label: 'Quantité Sortie',
-                    data: <?= json_encode($productQuantities) ?>,
-                    backgroundColor: 'rgba(54, 162, 235, 0.7)',
-                    borderColor: 'rgba(54, 162, 235, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: true
+        let productsChart;
+        let demandersChart;
+        
+        const productNames = <?= json_encode($productNames) ?>;
+        const productQuantities = <?= json_encode($productQuantities) ?>;
+        const demanderNames = <?= json_encode($demanderNames) ?>;
+        const demanderQuantities = <?= json_encode($demanderQuantities) ?>;
+        
+        // Color palettes
+        const productColors = [
+            'rgba(54, 162, 235, 0.7)', 'rgba(54, 162, 235, 0.65)', 'rgba(54, 162, 235, 0.6)', 
+            'rgba(54, 162, 235, 0.55)', 'rgba(54, 162, 235, 0.5)', 'rgba(54, 162, 235, 0.45)', 
+            'rgba(54, 162, 235, 0.4)', 'rgba(54, 162, 235, 0.35)', 'rgba(54, 162, 235, 0.3)', 
+            'rgba(54, 162, 235, 0.25)'
+        ];
+        
+        const demanderColors = [
+            'rgba(255, 159, 64, 0.7)', 'rgba(255, 159, 64, 0.65)', 'rgba(255, 159, 64, 0.6)', 
+            'rgba(255, 159, 64, 0.55)', 'rgba(255, 159, 64, 0.5)', 'rgba(255, 159, 64, 0.45)',
+            'rgba(255, 159, 64, 0.4)', 'rgba(255, 159, 64, 0.35)', 'rgba(255, 159, 64, 0.3)',
+            'rgba(255, 159, 64, 0.25)'
+        ];
+        
+        // Product chart initialization
+        function initProductsChart(type = 'bar', horizontal = false) {
+            const productsCtx = document.getElementById('productsChart').getContext('2d');
+            
+            // Destroy existing chart if it exists
+            if (productsChart) {
+                productsChart.destroy();
+            }
+            
+            // Configuration based on chart type
+            let config = {
+                type: type,
+                data: {
+                    labels: productNames,
+                    datasets: [{
+                        label: 'Quantité Sortie',
+                        data: productQuantities,
+                        backgroundColor: type === 'pie' ? productColors : 'rgba(54, 162, 235, 0.7)',
+                        borderColor: type === 'pie' ? productColors.map(color => color.replace('0.7', '1')) : 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: type === 'pie',
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += context.raw.toLocaleString();
+                                    return label;
+                                }
+                            }
+                        }
                     }
                 }
-            }
-        });
-
-        // Demanders Chart
-        const demandersCtx = document.getElementById('demandersChart').getContext('2d');
-        new Chart(demandersCtx, {
-            type: 'bar',
-            data: {
-                labels: <?= json_encode($demanderNames) ?>,
-                datasets: [{
-                    label: 'Nombre de Sorties',
-                    data: <?= json_encode($demanderQuantities) ?>,
-                    backgroundColor: 'rgba(255, 159, 64, 0.7)',
-                    borderColor: 'rgba(255, 159, 64, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
+            };
+            
+            // Additional options for bar charts
+            if (type === 'bar') {
+                config.options.indexAxis = horizontal ? 'y' : 'x';
+                config.options.scales = {
+                    x: {
+                        beginAtZero: true,
+                        grid: {
+                            display: !horizontal
+                        }
+                    },
                     y: {
-                        beginAtZero: true
+                        beginAtZero: true,
+                        grid: {
+                            display: horizontal
+                        }
+                    }
+                };
+            }
+            
+            productsChart = new Chart(productsCtx, config);
+        }
+        
+        // Demanders chart initialization
+        function initDemandersChart(type = 'bar', horizontal = false) {
+            const demandersCtx = document.getElementById('demandersChart').getContext('2d');
+            
+            // Destroy existing chart if it exists
+            if (demandersChart) {
+                demandersChart.destroy();
+            }
+            
+            // Configuration based on chart type
+            let config = {
+                type: type,
+                data: {
+                    labels: demanderNames,
+                    datasets: [{
+                        label: 'Nombre de Sorties',
+                        data: demanderQuantities,
+                        backgroundColor: type === 'pie' ? demanderColors : 'rgba(255, 159, 64, 0.7)',
+                        borderColor: type === 'pie' ? demanderColors.map(color => color.replace('0.7', '1')) : 'rgba(255, 159, 64, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: type === 'pie',
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += context.raw.toLocaleString();
+                                    return label;
+                                }
+                            }
+                        }
                     }
                 }
+            };
+            
+            // Additional options for bar charts
+            if (type === 'bar') {
+                config.options.indexAxis = horizontal ? 'y' : 'x';
+                config.options.scales = {
+                    x: {
+                        beginAtZero: true,
+                        grid: {
+                            display: !horizontal
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            display: horizontal
+                        }
+                    }
+                };
             }
+            
+            demandersChart = new Chart(demandersCtx, config);
+        }
+        
+        // Initialize charts on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            if (productNames.length > 0) {
+                initProductsChart('bar');
+            }
+            
+            if (demanderNames.length > 0) {
+                initDemandersChart('bar');
+            }
+            
+            // Event listeners for product chart controls
+            document.getElementById('productsBarBtn').addEventListener('click', function() {
+                document.querySelectorAll('.btn-group button').forEach(btn => {
+                    if (btn.id.startsWith('products')) {
+                        btn.classList.remove('active');
+                    }
+                });
+                this.classList.add('active');
+                initProductsChart('bar');
+            });
+            
+            document.getElementById('productsPieBtn').addEventListener('click', function() {
+                document.querySelectorAll('.btn-group button').forEach(btn => {
+                    if (btn.id.startsWith('products')) {
+                        btn.classList.remove('active');
+                    }
+                });
+                this.classList.add('active');
+                initProductsChart('pie');
+            });
+            
+            document.getElementById('productsHorizontalBtn').addEventListener('click', function() {
+                document.querySelectorAll('.btn-group button').forEach(btn => {
+                    if (btn.id.startsWith('products')) {
+                        btn.classList.remove('active');
+                    }
+                });
+                this.classList.add('active');
+                initProductsChart('bar', true);
+            });
+            
+            // Event listeners for demander chart controls
+            document.getElementById('demandersBarBtn').addEventListener('click', function() {
+                document.querySelectorAll('.btn-group button').forEach(btn => {
+                    if (btn.id.startsWith('demanders')) {
+                        btn.classList.remove('active');
+                    }
+                });
+                this.classList.add('active');
+                initDemandersChart('bar');
+            });
+            
+            document.getElementById('demandersPieBtn').addEventListener('click', function() {
+                document.querySelectorAll('.btn-group button').forEach(btn => {
+                    if (btn.id.startsWith('demanders')) {
+                        btn.classList.remove('active');
+                    }
+                });
+                this.classList.add('active');
+                initDemandersChart('pie');
+            });
+            
+            document.getElementById('demandersHorizontalBtn').addEventListener('click', function() {
+                document.querySelectorAll('.btn-group button').forEach(btn => {
+                    if (btn.id.startsWith('demanders')) {
+                        btn.classList.remove('active');
+                    }
+                });
+                this.classList.add('active');
+                initDemandersChart('bar', true);
+            });
         });
     </script>
 </body>
